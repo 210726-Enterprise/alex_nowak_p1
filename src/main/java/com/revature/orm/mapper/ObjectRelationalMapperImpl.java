@@ -1,7 +1,7 @@
-package com.revature.orm;
+package com.revature.orm.mapper;
 
-import com.revature.annotations.Table;
-import com.revature.annotations.Column;
+import com.revature.orm.annotations.Table;
+import com.revature.orm.annotations.Column;
 
 import java.lang.reflect.Field;
 import java.util.List;
@@ -25,11 +25,12 @@ public class ObjectRelationalMapperImpl implements ObjectRelationalMapper{
         StringBuilder sql = new StringBuilder("INSERT into \"" + table + "\" (");
         StringBuilder values = new StringBuilder();
         for(Field field : columns){
-            sql.append(field.getAnnotation(Column.class).columnName() +",");
+            sql.append(field.getAnnotation(Column.class).columnName() + ",");
             values.append(field.get(entity) + ",");
         }
         sql.append(") values (");
         sql.append(values);
+        sql.append(")");
     }
 
     /**

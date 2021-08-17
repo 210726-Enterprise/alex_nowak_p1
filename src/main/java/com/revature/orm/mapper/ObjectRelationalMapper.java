@@ -1,4 +1,4 @@
-package com.revature.orm;
+package com.revature.orm.mapper;
 
 /**
  * The Object Relational Mapper provides an interface for persisting and retrieving Java objects
