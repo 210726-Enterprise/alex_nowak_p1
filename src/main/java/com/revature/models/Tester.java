@@ -8,14 +8,14 @@ import lombok.Getter;
 import lombok.NoArgsConstructor;
 import lombok.Setter;
 
-@Table(tableName = "TEST")
+@Table(tableName = "tester")
 @NoArgsConstructor @AllArgsConstructor
 @Getter @Setter
-public class Test {
-    @Column(columnName = "ID")
+public class Tester {
+    @Column(columnName = "testerid")
     @PrimaryKey
     private int id;
-    @Column(columnName = "NAME")
+    @Column(columnName = "testername")
     private String name;
 
 }

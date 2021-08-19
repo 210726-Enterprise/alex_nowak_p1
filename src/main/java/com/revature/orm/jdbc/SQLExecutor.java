@@ -20,7 +20,7 @@ public class SQLExecutor {
         return updatedRows;
     }
 
-    public static void doQuery(String sql){
+    public static ResultSet doQuery(String sql){
         ResultSet resultSet = null;
         try(Connection connection = ConnectionFactory.getConnection()){
             PreparedStatement statement = connection.prepareStatement(sql);
@@ -29,5 +29,6 @@ public class SQLExecutor {
             //TODO change to logging
             System.out.println(e.getMessage());
         }
+        return resultSet;
     }
 }

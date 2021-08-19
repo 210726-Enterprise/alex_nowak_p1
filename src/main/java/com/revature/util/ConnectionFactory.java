@@ -3,7 +3,6 @@ package com.revature.util;
 import java.io.FileNotFoundException;
 import java.io.FileReader;
 import java.io.IOException;
-import java.io.InputStream;
 import java.sql.Connection;
 import java.sql.DriverManager;
 import java.sql.SQLException;
@@ -23,7 +22,7 @@ public class ConnectionFactory {
 
     public static Connection getConnection(){
         try {
-            Class.forName("org.h2.Driver");
+            Class.forName("org.postgresql.Driver");
             dbConnectionProps.load(new FileReader("src/main/resources/dbconnection.properties"));
             url = dbConnectionProps.getProperty("DB_URL");
             username = dbConnectionProps.getProperty("DB_USERNAME");

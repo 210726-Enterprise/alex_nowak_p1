@@ -3,11 +3,16 @@ package com.revature.orm.mapper;
 import com.revature.orm.annotations.PrimaryKey;
 import com.revature.orm.annotations.Table;
 import com.revature.orm.annotations.Column;
+import com.revature.orm.exceptions.FailedUpdateException;
 import com.revature.orm.jdbc.SQLExecutor;
 
+import java.lang.reflect.Constructor;
 import java.lang.reflect.Field;
 import java.lang.reflect.InvocationTargetException;
 import java.lang.reflect.Method;
+import java.sql.ResultSet;
+import java.sql.ResultSetMetaData;
+import java.sql.SQLException;
 import java.util.*;
 import java.util.stream.Collectors;
 import java.util.stream.Stream;
@@ -19,7 +24,7 @@ public class PostgresORM implements ObjectRelationalMapper{
      *
      */
     @Override
-    public void insert(Object entity) throws IllegalAccessException, InvocationTargetException {
+    public boolean insert(Object entity) throws IllegalAccessException, InvocationTargetException {
         //Get the table that we will insert into
         String table = entity.getClass().getAnnotation(Table.class).tableName();
         //Get a stream of all the entity fields and filter it down to only fields
@@ -30,16 +35,7 @@ public class PostgresORM implements ObjectRelationalMapper{
         List<Method> getters = Stream.of(entity.getClass().getDeclaredMethods()).filter((method) -> method.getName().startsWith("get"))
                                                                                 .collect(Collectors.toList());
 
-        Map<Field, Method> fieldGetters = new HashMap<>();
-        for(Field field : columns){
-            for(Method method : getters){
-                String getterField = method.getName().substring(3).toLowerCase();
-                if(field.getName().equals(getterField)){
-                    fieldGetters.put(field, method);
-                    break;
-                }
-            }
-        }
+        Map<Field, Method> fieldGetters = mapGettersToFields(columns, getters);
 
         StringBuilder sql = new StringBuilder("INSERT into \"" + table + "\" (");
         StringBuilder values = new StringBuilder();
@@ -68,7 +64,14 @@ public class PostgresORM implements ObjectRelationalMapper{
         sql.append(values);
         sql.append(")");
         System.out.println(sql);
-        SQLExecutor.doUpdate(sql.toString());
+        int rows = SQLExecutor.doUpdate(sql.toString());
+        if(rows > 0){
+            return true;
+        }
+        else{
+            return false;
+            //TODO add logging message notifying that insertion did not work
+        }
     }
 
     /**
@@ -83,7 +86,20 @@ public class PostgresORM implements ObjectRelationalMapper{
         sql.append("\"").append(table).append("\"");
         sql.append(" where ");
         sql.append("\"").append(primaryKey).append("\"").append("=").append(keyId);
-        //ResultSet resultSet = SQLExecutor.doQuery(sql.toString());
+
+        System.out.println(sql);
+        //TODO build out new Object from returned values
+        ResultSet resultSet = SQLExecutor.doQuery(sql.toString());
+//        List<Constructor<?>> defaultConstructorList = Stream.of(entityClass.getConstructors()).filter((constructor -> constructor.getParameterCount() == 0))
+//                                                .collect(Collectors.toList());
+//        Constructor<?> defaultConstructor = defaultConstructorList.get(0);
+        try {
+            ResultSetMetaData resultMetaData = resultSet.getMetaData();
+        } catch (SQLException e) {
+            System.out.println(e.getMessage());
+        }
+        // Create new object instance
+        // Use setters to set values, get the values from the resultSet
 
         return null;
     }
@@ -92,7 +108,7 @@ public class PostgresORM implements ObjectRelationalMapper{
      *
      */
     @Override
-    public void update(Object entity, int keyId) throws IllegalAccessException, InvocationTargetException{
+    public boolean update(Object entity, int keyId) throws IllegalAccessException, InvocationTargetException{
         String table = entity.getClass().getAnnotation(Table.class).tableName();
 
         Stream<Field> fieldsStream = Stream.of(entity.getClass().getDeclaredFields());
@@ -125,14 +141,21 @@ public class PostgresORM implements ObjectRelationalMapper{
         }
         sql.append(" where \"").append(primaryKey).append("\" =").append(keyId);
         System.out.println(sql);
-        //SQLExecutor.doUpdate(sql.toString());
+        int rows = SQLExecutor.doUpdate(sql.toString());
+        if(rows > 0){
+            return true;
+        }
+        else{
+            return false;
+            //TODO add logging for failure
+        }
     }
 
     /**
      *
      */
     @Override
-    public void delete(Class<?> entityClass, int keyId) throws IndexOutOfBoundsException{
+    public boolean delete(Class<?> entityClass, int keyId) throws FailedUpdateException{
         String table = entityClass.getAnnotation(Table.class).tableName();
         String primaryKeyName = getPrimaryKeyName(entityClass);
 
@@ -140,7 +163,13 @@ public class PostgresORM implements ObjectRelationalMapper{
         sql.append(table);
         sql.append("\" where \"").append(primaryKeyName).append("\"=").append(keyId);
         System.out.println(sql);
-        //SQLExecutor.doUpdate(sql.toString());
+        int rows = SQLExecutor.doUpdate(sql.toString());
+        if(rows > 0){
+            return true;
+        }
+        else{
+            throw new FailedUpdateException();
+        }
     }
 
     private Map<Field, Method> mapGettersToFields(List<Field> columns, List<Method> getters){
