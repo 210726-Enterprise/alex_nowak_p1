@@ -3,6 +3,7 @@ package com.revature.orm.mapper;
 import com.revature.orm.exceptions.FailedUpdateException;
 
 import java.lang.reflect.InvocationTargetException;
+import java.util.Optional;
 
 /**
  * The Object Relational Mapper provides an interface for persisting and retrieving Java objects
@@ -12,13 +13,13 @@ public interface ObjectRelationalMapper {
     /**
      *
      */
-    boolean insert(Object entity) throws IllegalAccessException, InvocationTargetException;
+    boolean insert(Object entity);
 
     /**
      *
      * @return
      */
-    <T> T get(Class<?> entityClass, int keyId);
+    <T> Optional<T> get(Class<?> entityClass, int keyId);
 
     /**
      *

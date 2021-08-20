@@ -1,16 +1,17 @@
 package com.revature.orm.mapper;
 
+import com.revature.models.Tester;
+import org.junit.Before;
 import org.junit.Test;
 
-import java.sql.Connection;
-
 import static org.junit.Assert.*;
-import static org.mockito.Mockito.mock;
 
 public class PostgresORMTest {
 
+    ObjectRelationalMapper orm = new PostgresORM();
+
     @Test
     public void insert() {
-
+        //assertTrue("Failed to make a new record.", orm.insert());
     }
 }

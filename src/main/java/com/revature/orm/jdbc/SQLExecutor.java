@@ -27,7 +27,7 @@ public class SQLExecutor {
             resultSet = statement.executeQuery();
         } catch (SQLException e) {
             //TODO change to logging
-            System.out.println(e.getMessage());
+           e.printStackTrace();
         }
         return resultSet;
     }

@@ -18,4 +18,11 @@ public class Tester {
     @Column(columnName = "testername")
     private String name;
 
+    @Override
+    public String toString() {
+        return "Tester{" +
+                "id=" + id +
+                ", name='" + name + '\'' +
+                '}';
+    }
 }

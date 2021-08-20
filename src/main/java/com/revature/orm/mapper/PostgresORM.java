@@ -5,14 +5,13 @@ import com.revature.orm.annotations.Table;
 import com.revature.orm.annotations.Column;
 import com.revature.orm.exceptions.FailedUpdateException;
 import com.revature.orm.jdbc.SQLExecutor;
+import com.revature.util.ConnectionFactory;
 
 import java.lang.reflect.Constructor;
 import java.lang.reflect.Field;
 import java.lang.reflect.InvocationTargetException;
 import java.lang.reflect.Method;
-import java.sql.ResultSet;
-import java.sql.ResultSetMetaData;
-import java.sql.SQLException;
+import java.sql.*;
 import java.util.*;
 import java.util.stream.Collectors;
 import java.util.stream.Stream;
@@ -24,15 +23,16 @@ public class PostgresORM implements ObjectRelationalMapper{
      *
      */
     @Override
-    public boolean insert(Object entity) throws IllegalAccessException, InvocationTargetException {
+    public boolean insert(Object entity) {
         //Get the table that we will insert into
         String table = entity.getClass().getAnnotation(Table.class).tableName();
         //Get a stream of all the entity fields and filter it down to only fields
         //with a @Column annotation, then get the collection as a List
+        //Primary Keys are excluded, assume the user's tables are setup with auto-increment id keys
         Stream<Field> fieldsStream = Stream.of(entity.getClass().getDeclaredFields());
-        List<Field> columns = fieldsStream.filter((field) -> field.getAnnotation(Column.class) != null)
+        List<Field> columns = fieldsStream.filter((field) -> field.getAnnotation(Column.class) != null && field.getAnnotation(PrimaryKey.class) == null)
                                             .collect(Collectors.toList());
-        List<Method> getters = Stream.of(entity.getClass().getDeclaredMethods()).filter((method) -> method.getName().startsWith("get"))
+        List<Method> getters = Stream.of(entity.getClass().getMethods()).filter((method) -> method.getName().startsWith("get"))
                                                                                 .collect(Collectors.toList());
 
         Map<Field, Method> fieldGetters = mapGettersToFields(columns, getters);
@@ -46,13 +46,18 @@ public class PostgresORM implements ObjectRelationalMapper{
             sql.append(field.getAnnotation(Column.class).columnName());
             sql.append("\"");
             //String field values require single quotes for the SQL statement
-            if(field.getType().equals(String.class)){
-                values.append("'");
-                values.append(fieldGetters.get(field).invoke(entity));
-                values.append("'");
-            }
-            else{
-                values.append(fieldGetters.get(field).invoke(entity));
+            try{
+                if(field.getType().equals(String.class)){
+                    values.append("'");
+                    values.append(fieldGetters.get(field).invoke(entity));
+                    values.append("'");
+                }
+                else{
+                    values.append(fieldGetters.get(field).invoke(entity));
+                }
+            } catch (ReflectiveOperationException e) {
+                System.out.println(e.getMessage());
+                //TODO add logging
             }
 
             if(columnsIterator.hasNext()){
@@ -78,7 +83,9 @@ public class PostgresORM implements ObjectRelationalMapper{
      * @return
      */
     @Override
-    public <T> T get(Class<?> entityClass, int keyId) {
+    public <T> Optional<T> get(Class<?> entityClass, int keyId) {
+        T newInstance = null;
+
         String table = entityClass.getAnnotation(Table.class).tableName();
         String primaryKey = getPrimaryKeyName(entityClass);
 
@@ -88,20 +95,53 @@ public class PostgresORM implements ObjectRelationalMapper{
         sql.append("\"").append(primaryKey).append("\"").append("=").append(keyId);
 
         System.out.println(sql);
-        //TODO build out new Object from returned values
-        ResultSet resultSet = SQLExecutor.doQuery(sql.toString());
-//        List<Constructor<?>> defaultConstructorList = Stream.of(entityClass.getConstructors()).filter((constructor -> constructor.getParameterCount() == 0))
-//                                                .collect(Collectors.toList());
-//        Constructor<?> defaultConstructor = defaultConstructorList.get(0);
-        try {
-            ResultSetMetaData resultMetaData = resultSet.getMetaData();
-        } catch (SQLException e) {
-            System.out.println(e.getMessage());
-        }
-        // Create new object instance
-        // Use setters to set values, get the values from the resultSet
 
-        return null;
+        List<Constructor<?>> defaultConstructorList = Stream.of(entityClass.getConstructors()).filter((constructor -> constructor.getParameterCount() == 0))
+                .collect(Collectors.toList());
+        Constructor<?> defaultConstructor = defaultConstructorList.get(0);
+
+        try(Connection connection = ConnectionFactory.getConnection()){
+            PreparedStatement statement = connection.prepareStatement(sql.toString());
+            ResultSet resultSet = statement.executeQuery();
+            ResultSetMetaData resultMetaData = resultSet.getMetaData();
+
+            // Create new object instance
+            // Use setters to set values, get the values from the resultSet
+            newInstance = (T)defaultConstructor.newInstance();
+            List<Field> columns = Stream.of(entityClass.getDeclaredFields()).filter((field) -> field.getAnnotation(Column.class) != null)
+                    .collect(Collectors.toList());
+            List<Method> setters = Stream.of(entityClass.getMethods()).filter((method) -> method.getName().startsWith("set"))
+                    .collect(Collectors.toList());
+            Map<String, Method> fieldSetters = mapSettersToFieldNames(columns, setters);
+            while (resultSet.next()){
+                for(int i = 1; i <= resultMetaData.getColumnCount(); i++){
+                    String columnName = resultMetaData.getColumnName(i);
+                    String columnType = resultMetaData.getColumnTypeName(i);
+                    switch (columnType){
+                        case "serial":
+                        case "int4":
+                            fieldSetters.get(columnName).invoke(newInstance, resultSet.getInt(columnName));
+                            break;
+                        case "text":
+                            fieldSetters.get(columnName).invoke(newInstance, resultSet.getString(columnName));
+                            break;
+                        case "numeric":
+                            fieldSetters.get(columnName).invoke(newInstance, resultSet.getFloat(columnName));
+                            break;
+                        case "boolean":
+                            fieldSetters.get(columnName).invoke(newInstance, resultSet.getBoolean(columnName));
+                            break;
+                    }
+                }
+            }
+
+        } catch (SQLException e){
+            e.printStackTrace();
+        } catch (ReflectiveOperationException e) {
+            e.printStackTrace();
+        }
+
+        return Optional.of(newInstance);
     }
 
     /**
@@ -176,14 +216,36 @@ public class PostgresORM implements ObjectRelationalMapper{
         Map<Field, Method> fieldGetters = new HashMap<>();
         for(Field field : columns){
             for(Method method : getters){
-                String getterField = method.getName().substring(3).toLowerCase();
-                if(field.getName().toLowerCase().equals(getterField)){
+                String getterName = method.getName().substring(3).toLowerCase();
+                if(field.getName().toLowerCase().equals(getterName)){
                     fieldGetters.put(field, method);
                     break;
                 }
             }
         }
         return fieldGetters;
+    }
+
+    private Map<String, Method> mapSettersToFieldNames(List<Field> columns, List<Method> setters){
+        Map<String, Method> fieldSetters = new HashMap<>();
+        for(Field field : columns){
+            for(Method method : setters){
+                String setterName = method.getName().substring(3).toLowerCase();
+                if(field.getName().toLowerCase().equals(setterName)){
+                    fieldSetters.put(field.getAnnotation(Column.class).columnName(), method);
+                    break;
+                }
+            }
+        }
+        return fieldSetters;
+    }
+
+    private Map<String, Class<?>> mapTypeToFieldNames(List<Field> fields){
+        Map<String, Class<?>> fieldTypes = new HashMap<>();
+        for(Field field : fields){
+            fieldTypes.put(field.getAnnotation(Column.class).columnName(), field.getType());
+        }
+        return fieldTypes;
     }
 
     private String getPrimaryKeyName(Class<?> entityClass){
