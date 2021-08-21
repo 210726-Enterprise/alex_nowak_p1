@@ -3,6 +3,7 @@ package com.revature.orm.mapper;
 import com.revature.orm.exceptions.FailedUpdateException;
 
 import java.lang.reflect.InvocationTargetException;
+import java.util.List;
 import java.util.Optional;
 
 /**
@@ -19,15 +20,23 @@ public interface ObjectRelationalMapper {
      *
      * @return
      */
-    <T> Optional<T> get(Class<?> entityClass, int keyId);
+    <T> Optional<T> getById(Class<?> entityClass, int keyId);
+
+    /**
+     *
+     * @param entityClass
+     * @param <T>
+     * @return
+     */
+    <T> List<T> getAll(Class<?> entityClass);
 
     /**
      *
      */
-    boolean update(Object entity, int keyId) throws IllegalAccessException, InvocationTargetException;
+    boolean update(Object entity, int keyId);
 
     /**
      *
      */
-    boolean delete(Class<?> entityClass, int keyId) throws FailedUpdateException;
+    boolean delete(Class<?> entityClass, int keyId);
 }

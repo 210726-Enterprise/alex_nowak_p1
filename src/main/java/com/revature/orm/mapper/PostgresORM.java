@@ -6,6 +6,7 @@ import com.revature.orm.annotations.Column;
 import com.revature.orm.exceptions.FailedUpdateException;
 import com.revature.orm.jdbc.SQLExecutor;
 import com.revature.util.ConnectionFactory;
+import org.apache.log4j.*;
 
 import java.lang.reflect.Constructor;
 import java.lang.reflect.Field;
@@ -17,7 +18,7 @@ import java.util.stream.Collectors;
 import java.util.stream.Stream;
 
 public class PostgresORM implements ObjectRelationalMapper{
-
+    private final static Logger logger = Logger.getLogger(PostgresORM.class);
 
     /**
      *
@@ -57,7 +58,7 @@ public class PostgresORM implements ObjectRelationalMapper{
                 }
             } catch (ReflectiveOperationException e) {
                 System.out.println(e.getMessage());
-                //TODO add logging
+                logger.error(e.getMessage(), e);
             }
 
             if(columnsIterator.hasNext()){
@@ -68,14 +69,15 @@ public class PostgresORM implements ObjectRelationalMapper{
         sql.append(") values (");
         sql.append(values);
         sql.append(")");
-        System.out.println(sql);
+
         int rows = SQLExecutor.doUpdate(sql.toString());
         if(rows > 0){
+            logger.info("New " + entity.getClass().getSimpleName() + " created in the database!");
             return true;
         }
         else{
+            logger.warn("No records inserted into the database.");
             return false;
-            //TODO add logging message notifying that insertion did not work
         }
     }
 
@@ -83,7 +85,7 @@ public class PostgresORM implements ObjectRelationalMapper{
      * @return
      */
     @Override
-    public <T> Optional<T> get(Class<?> entityClass, int keyId) {
+    public <T> Optional<T> getById(Class<?> entityClass, int keyId) {
         T newInstance = null;
 
         String table = entityClass.getAnnotation(Table.class).tableName();
@@ -134,21 +136,87 @@ public class PostgresORM implements ObjectRelationalMapper{
                     }
                 }
             }
-
+            logger.info(entityClass.getSimpleName() + " " + keyId + " retrieved from database.");
         } catch (SQLException e){
-            e.printStackTrace();
+            logger.warn(e.getMessage(), e);
         } catch (ReflectiveOperationException e) {
-            e.printStackTrace();
+            logger.warn(e.getMessage(), e);
         }
 
         return Optional.of(newInstance);
+    }
+
+    public <T> List<T> getAll(Class<?> entityClass){
+        List<T> retrievals = new ArrayList<>();
+
+        String table = entityClass.getAnnotation(Table.class).tableName();
+        String primaryKey = getPrimaryKeyName(entityClass);
+
+        StringBuilder sql = new StringBuilder("SELECT * from ");
+        sql.append("\"").append(table).append("\"");
+
+        List<Constructor<?>> defaultConstructorList = Stream.of(entityClass.getConstructors()).filter((constructor -> constructor.getParameterCount() == 0))
+                .collect(Collectors.toList());
+        Constructor<?> defaultConstructor = defaultConstructorList.get(0);
+
+        try(Connection connection = ConnectionFactory.getConnection()){
+            PreparedStatement statement = connection.prepareStatement(sql.toString());
+            ResultSet resultSet = statement.executeQuery();
+            ResultSetMetaData resultMetaData = resultSet.getMetaData();
+
+            List<Field> columns = Stream.of(entityClass.getDeclaredFields()).filter((field) -> field.getAnnotation(Column.class) != null)
+                    .collect(Collectors.toList());
+            List<Method> setters = Stream.of(entityClass.getMethods()).filter((method) -> method.getName().startsWith("set"))
+                    .collect(Collectors.toList());
+            Map<String, Method> fieldSetters = mapSettersToFieldNames(columns, setters);
+            // Create a new instance for every record retrieved
+            while (resultSet.next()){
+                // Create new object instance
+                // Use setters to set values, get the values from the resultSet
+                T newInstance = (T)defaultConstructor.newInstance();
+                for(int i = 1; i <= resultMetaData.getColumnCount(); i++){
+                    String columnName = resultMetaData.getColumnName(i);
+                    String columnType = resultMetaData.getColumnTypeName(i);
+                    switch (columnType){
+                        case "serial":
+                        case "int4":
+                            fieldSetters.get(columnName).invoke(newInstance, resultSet.getInt(columnName));
+                            break;
+                        case "text":
+                            fieldSetters.get(columnName).invoke(newInstance, resultSet.getString(columnName));
+                            break;
+                        case "numeric":
+                            fieldSetters.get(columnName).invoke(newInstance, resultSet.getFloat(columnName));
+                            break;
+                        case "boolean":
+                            fieldSetters.get(columnName).invoke(newInstance, resultSet.getBoolean(columnName));
+                            break;
+                    }
+                }
+                retrievals.add(newInstance);
+            }
+
+        } catch (SQLException e){
+            logger.warn(e.getMessage(), e);
+        } catch (ReflectiveOperationException e) {
+            logger.warn(e.getMessage(), e);
+        }
+
+        if(!retrievals.isEmpty()){
+            logger.info("All " + entityClass.getSimpleName() + "s retrieved.");
+        }
+        else{
+            logger.info("No " + entityClass.getSimpleName() + "s in the database.");
+        }
+
+        return retrievals;
     }
 
     /**
      *
      */
     @Override
-    public boolean update(Object entity, int keyId) throws IllegalAccessException, InvocationTargetException{
+    public boolean update(Object entity, int keyId){
         String table = entity.getClass().getAnnotation(Table.class).tableName();
 
         Stream<Field> fieldsStream = Stream.of(entity.getClass().getDeclaredFields());
@@ -164,20 +232,23 @@ public class PostgresORM implements ObjectRelationalMapper{
         sql.append(table);
         sql.append("\" set ");
         Iterator<Field> columnsIterator = columns.iterator();
-        while(columnsIterator.hasNext()){
-            Field field = columnsIterator.next();
-            sql.append("\"").append(field.getAnnotation(Column.class).columnName()).append("\"").append("=");
-            //String field values require single quotes for the SQL statement
-            if(field.getType().equals(String.class)){
-                sql.append("'").append(fieldGetters.get(field).invoke(entity)).append("'");
-            }
-            else{
-                sql.append(fieldGetters.get(field).invoke(entity));
-            }
+        try {
+            while (columnsIterator.hasNext()) {
+                Field field = columnsIterator.next();
+                sql.append("\"").append(field.getAnnotation(Column.class).columnName()).append("\"").append("=");
+                //String field values require single quotes for the SQL statement
+                if (field.getType().equals(String.class)) {
+                    sql.append("'").append(fieldGetters.get(field).invoke(entity)).append("'");
+                } else {
+                    sql.append(fieldGetters.get(field).invoke(entity));
+                }
 
-            if(columnsIterator.hasNext()){
-                sql.append(",");
+                if (columnsIterator.hasNext()) {
+                    sql.append(",");
+                }
             }
+        } catch (ReflectiveOperationException e){
+            logger.error(e.getMessage(), e);
         }
         sql.append(" where \"").append(primaryKey).append("\" =").append(keyId);
         System.out.println(sql);
@@ -186,8 +257,8 @@ public class PostgresORM implements ObjectRelationalMapper{
             return true;
         }
         else{
+            logger.warn("No updated records.");
             return false;
-            //TODO add logging for failure
         }
     }
 
@@ -195,7 +266,7 @@ public class PostgresORM implements ObjectRelationalMapper{
      *
      */
     @Override
-    public boolean delete(Class<?> entityClass, int keyId) throws FailedUpdateException{
+    public boolean delete(Class<?> entityClass, int keyId) {
         String table = entityClass.getAnnotation(Table.class).tableName();
         String primaryKeyName = getPrimaryKeyName(entityClass);
 
@@ -208,7 +279,8 @@ public class PostgresORM implements ObjectRelationalMapper{
             return true;
         }
         else{
-            throw new FailedUpdateException();
+            logger.warn("No updated records.");
+            return false;
         }
     }
 
