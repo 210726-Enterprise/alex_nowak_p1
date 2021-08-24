@@ -4,20 +4,30 @@ import com.revature.models.Tester;
 import com.revature.orm.exceptions.FailedQueryException;
 import org.junit.jupiter.api.*;
 
+import java.io.FileReader;
+import java.io.IOException;
 import java.util.List;
+import java.util.Properties;
 
 import static org.junit.jupiter.api.Assertions.*;
 
 @TestMethodOrder(MethodOrderer.OrderAnnotation.class)
 public class PostgresORMTest {
 
-    private ObjectRelationalMapper orm = new PostgresORM();
+    private Properties dbConnectionProps = new Properties();
+    private ObjectRelationalMapper orm;
     private Tester tester;
-    private final int TESTER_ID = 5;
-    private final String TESTER_NAME = "Numbah 5";
+    private final int TESTER_ID = 6;
+    private final String TESTER_NAME = "Numbah 6";
 
     @BeforeEach
     public void setup(){
+        try {
+            dbConnectionProps.load(new FileReader("src/main/resources/dbconnection.properties"));
+        } catch (IOException e) {
+            e.printStackTrace();
+        }
+        orm = new PostgresORM(dbConnectionProps);
         tester = new Tester();
         tester.setId(TESTER_ID);
         tester.setName(TESTER_NAME);

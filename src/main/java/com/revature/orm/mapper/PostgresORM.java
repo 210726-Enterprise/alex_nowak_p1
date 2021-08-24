@@ -21,6 +21,11 @@ import java.util.stream.Stream;
  */
 public class PostgresORM implements ObjectRelationalMapper{
     private final static Logger logger = Logger.getLogger(PostgresORM.class);
+    private static Properties DB_CONNECTION_PROPS;
+
+    public PostgresORM(Properties connectionProps){
+        DB_CONNECTION_PROPS = connectionProps;
+    }
 
     /**
      * Inserts a new row into an existing database. The class must have publicly accessible
@@ -76,7 +81,7 @@ public class PostgresORM implements ObjectRelationalMapper{
         sql.append(values);
         sql.append(")");
 
-        int rows = SQLExecutor.doUpdate(sql.toString());
+        int rows = SQLExecutor.doUpdate(sql.toString(), DB_CONNECTION_PROPS);
         if(rows > 0){
             logger.info("New " + entity.getClass().getSimpleName() + " created in the database!");
             return true;
@@ -88,7 +93,8 @@ public class PostgresORM implements ObjectRelationalMapper{
     }
 
     /**
-     * Gets a single row from a table and return it with an Optional wrapper.
+     * Gets a single row from a table and return it with an Optional wrapper. The model class
+     * must have a default constructor in order for the new instance to be instantiated.
      * @param entityClass a Class object of the type to be retrieved, used for reflection to
      *                    build out the Java object and to know what table to query
      * @param keyId the primary key ID of the row to be retrieved
@@ -112,7 +118,7 @@ public class PostgresORM implements ObjectRelationalMapper{
                 .collect(Collectors.toList());
         Constructor<?> defaultConstructor = defaultConstructorList.get(0);
 
-        try(Connection connection = ConnectionFactory.getConnection()){
+        try(Connection connection = ConnectionFactory.getConnection(DB_CONNECTION_PROPS)){
             PreparedStatement statement = connection.prepareStatement(sql.toString());
             ResultSet resultSet = statement.executeQuery();
             ResultSetMetaData resultMetaData = resultSet.getMetaData();
@@ -157,7 +163,8 @@ public class PostgresORM implements ObjectRelationalMapper{
     }
 
     /**
-     * Gets all the rows from a table and return it as a List.
+     * Gets all the rows from a table and return it as a List. The model class must have a
+     * default constructor in order for this method to be able to be instantiate new instances.
      * @param entityClass a Class object of the type to be retrieved, used for reflection to
      *                   build out the Java object and to know what table to query
      * @param <T> the type that will be built and returned
@@ -178,7 +185,7 @@ public class PostgresORM implements ObjectRelationalMapper{
                 .collect(Collectors.toList());
         Constructor<?> defaultConstructor = defaultConstructorList.get(0);
 
-        try(Connection connection = ConnectionFactory.getConnection()){
+        try(Connection connection = ConnectionFactory.getConnection(DB_CONNECTION_PROPS)){
             PreparedStatement statement = connection.prepareStatement(sql.toString());
             ResultSet resultSet = statement.executeQuery();
             ResultSetMetaData resultMetaData = resultSet.getMetaData();
@@ -273,7 +280,7 @@ public class PostgresORM implements ObjectRelationalMapper{
         }
         sql.append(" where \"").append(primaryKey).append("\" =").append(keyId);
         System.out.println(sql);
-        int rows = SQLExecutor.doUpdate(sql.toString());
+        int rows = SQLExecutor.doUpdate(sql.toString(), DB_CONNECTION_PROPS);
         if(rows > 0){
             logger.info(entity.getClass().getSimpleName() + "(ID:" + keyId + ") has been successfully updated.");
             return true;
@@ -299,7 +306,7 @@ public class PostgresORM implements ObjectRelationalMapper{
         sql.append(table);
         sql.append("\" where \"").append(primaryKeyName).append("\"=").append(keyId);
         System.out.println(sql);
-        int rows = SQLExecutor.doUpdate(sql.toString());
+        int rows = SQLExecutor.doUpdate(sql.toString(), DB_CONNECTION_PROPS);
         if(rows > 0){
             logger.info(entityClass.getSimpleName() + "(ID:" + keyId + ") has been successfully deleted.");
             return true;

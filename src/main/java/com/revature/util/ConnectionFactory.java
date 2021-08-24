@@ -1,8 +1,5 @@
 package com.revature.util;
 
-import java.io.FileNotFoundException;
-import java.io.FileReader;
-import java.io.IOException;
 import java.sql.Connection;
 import java.sql.DriverManager;
 import java.sql.SQLException;
@@ -20,10 +17,9 @@ public class ConnectionFactory {
 
     private static Connection connection;
 
-    public static Connection getConnection(){
+    public static Connection getConnection(Properties dbConnectionProps){
         try {
             Class.forName("org.postgresql.Driver");
-            dbConnectionProps.load(new FileReader("src/main/resources/dbconnection.properties"));
             url = dbConnectionProps.getProperty("DB_URL");
             username = dbConnectionProps.getProperty("DB_USERNAME");
             password = dbConnectionProps.getProperty("DB_PASSWORD");
@@ -31,11 +27,6 @@ public class ConnectionFactory {
         } catch (SQLException e) {
             System.out.println(e.getMessage());
             System.out.println("Could not connect to database.");
-        } catch (FileNotFoundException fileNotFoundException) {
-            System.out.println("File dbconnection.properties could not be found.");
-            System.out.println("Please make sure dconnection.properties is in a directory called resources.");
-        } catch (IOException ioException) {
-            System.out.println("Error reading from database configuration.");
         } catch (ClassNotFoundException e) {
             System.out.println("Could not find database driver.");
         }
